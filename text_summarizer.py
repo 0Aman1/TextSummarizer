@@ -65,9 +65,9 @@ class TextPreprocessor:
         try:
             self.nlp = spacy.load('en_core_web_sm')
             self.use_spacy = True
-            print("✓ Using spaCy for advanced preprocessing")
+            print(" Using spaCy for advanced preprocessing")
         except OSError:
-            print("⚠ spaCy model not found. Using basic preprocessing.")
+            print(" spaCy model not found. Using basic preprocessing.")
             print("  Install with: python -m spacy download en_core_web_sm")
             self.use_spacy = False
     
@@ -189,7 +189,7 @@ class ExtractiveSummarizer:
             
         except ValueError:
             # Handle edge case where no features can be extracted
-            print("⚠ Warning: Could not create TF-IDF vectors. Using uniform similarity.")
+            print(" Warning: Could not create TF-IDF vectors. Using uniform similarity.")
             return np.ones((len(sentences), len(sentences))) * 0.1
     
     def _rank_sentences(self, similarity_matrix: np.ndarray) -> List[float]:
@@ -275,39 +275,38 @@ class AbstractiveSummarizer:
     def _load_model(self):
         """Load the summarization model and tokenizer."""
         try:
-            print(f"🔄 Loading model: {self.model_name}")
+            print(f" Loading model: {self.model_name}")
             
             # Check if CUDA is available
-            device = 0 if torch.cuda.is_available() else -1
-            if device == 0:
-                print("✓ Using GPU acceleration")
+            self.device = 0 if torch.cuda.is_available() else -1
+            if self.device == 0:
+                print(" Using GPU acceleration")
             else:
-                print("✓ Using CPU (consider GPU for faster processing)")
+                print(" Using CPU (consider GPU for faster processing)")
             
-            # Load the summarization pipeline
-            self.summarizer = pipeline(
-                "summarization",
-                model=self.model_name,
-                device=device
-            )
+            # Load model directly
+            self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+            self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
+            if self.device == 0:
+                self.model = self.model.cuda()
+            self.summarizer = True
             
-            print("✓ Model loaded successfully")
+            print(" Model loaded successfully")
             
         except Exception as e:
-            print(f"❌ Error loading model: {e}")
-            print("💡 Falling back to a smaller model...")
+            print(f" Error loading model: {e}")
+            print(" Falling back to a smaller model...")
             
             try:
                 # Fallback to a smaller, more reliable model
                 self.model_name = "sshleifer/distilbart-cnn-12-6"
-                self.summarizer = pipeline(
-                    "summarization",
-                    model=self.model_name,
-                    device=-1  # Use CPU for fallback
-                )
-                print("✓ Fallback model loaded successfully")
+                self.tokenizer = AutoTokenizer.from_pretrained(self.model_name)
+                self.model = AutoModelForSeq2SeqLM.from_pretrained(self.model_name)
+                self.device = -1
+                self.summarizer = True
+                print(" Fallback model loaded successfully")
             except Exception as e2:
-                print(f"❌ Critical error: {e2}")
+                print(f" Critical error: {e2}")
                 print("Please install transformers and torch properly")
                 self.summarizer = None
     
@@ -324,30 +323,33 @@ class AbstractiveSummarizer:
             str: Abstractive summary
         """
         if not self.summarizer:
-            return "❌ Abstractive summarization unavailable. Please check model installation."
+            return " Abstractive summarization unavailable. Please check model installation."
         
         try:
             # Truncate text if it's too long for the model
             max_input_length = 1024  # Most models have input limits
             if len(text.split()) > max_input_length:
                 text = ' '.join(text.split()[:max_input_length])
-                print(f"⚠ Text truncated to {max_input_length} words")
+                print(f" Text truncated to {max_input_length} words")
             
             # Generate summary
-            summary = self.summarizer(
-                text,
+            inputs = self.tokenizer(text, return_tensors="pt", max_length=max_input_length, truncation=True)
+            if self.device == 0:
+                inputs = {k: v.cuda() for k, v in inputs.items()}
+                
+            summary_ids = self.model.generate(
+                inputs["input_ids"],
                 max_length=max_length,
                 min_length=min_length,
-                do_sample=False,  # Use deterministic generation
-                num_beams=4,      # Beam search for better quality
+                num_beams=4,
                 length_penalty=2.0,
                 early_stopping=True
             )
-            
-            return summary[0]['summary_text']
+            summary = self.tokenizer.decode(summary_ids[0], skip_special_tokens=True)
+            return summary
             
         except Exception as e:
-            print(f"❌ Error during summarization: {e}")
+            print(f" Error during summarization: {e}")
             return f"Error generating summary: {str(e)}"
 
 
@@ -392,7 +394,7 @@ class SummarizerEvaluator:
         Args:
             scores (Dict[str, float]): ROUGE scores dictionary
         """
-        print("\n📊 ROUGE Evaluation Results:")
+        print("\n ROUGE Evaluation Results:")
         print("=" * 40)
         print(f"ROUGE-1 F-Score: {scores['rouge1_f']:.4f}")
         print(f"ROUGE-1 Precision: {scores['rouge1_p']:.4f}")
@@ -408,7 +410,7 @@ class TextSummarizer:
     
     def __init__(self):
         """Initialize the complete text summarization system."""
-        print("🚀 Initializing Text Summarizer...")
+        print(" Initializing Text Summarizer...")
         
         # Initialize components
         self.preprocessor = TextPreprocessor()
@@ -416,7 +418,7 @@ class TextSummarizer:
         self.abstractive_summarizer = AbstractiveSummarizer()
         self.evaluator = SummarizerEvaluator()
         
-        print("✓ Text Summarizer ready!")
+        print(" Text Summarizer ready!")
     
     def summarize(self, text: str, method: str = "both", **kwargs) -> Dict[str, str]:
         """
@@ -433,7 +435,7 @@ class TextSummarizer:
         results = {}
         
         if method in ["extractive", "both"]:
-            print("🔄 Generating extractive summary...")
+            print(" Generating extractive summary...")
             extractive_summary = self.extractive_summarizer.summarize(
                 text, 
                 summary_ratio=kwargs.get('summary_ratio', 0.3)
@@ -441,7 +443,7 @@ class TextSummarizer:
             results['extractive'] = extractive_summary
         
         if method in ["abstractive", "both"]:
-            print("🔄 Generating abstractive summary...")
+            print(" Generating abstractive summary...")
             abstractive_summary = self.abstractive_summarizer.summarize(
                 text,
                 max_length=kwargs.get('max_length', 150),
@@ -459,30 +461,30 @@ class TextSummarizer:
             text (str): Input text
             reference_summary (str, optional): Reference summary for evaluation
         """
-        print("\n🔍 Comparing Summarization Methods")
+        print("\n Comparing Summarization Methods")
         print("=" * 50)
         
         # Generate summaries
         summaries = self.summarize(text, method="both")
         
         # Display results
-        print(f"\n📄 Original Text ({len(text.split())} words):")
+        print(f"\n Original Text ({len(text.split())} words):")
         print("-" * 30)
         print(text[:200] + "..." if len(text) > 200 else text)
         
         if 'extractive' in summaries:
-            print(f"\n📝 Extractive Summary ({len(summaries['extractive'].split())} words):")
+            print(f"\n Extractive Summary ({len(summaries['extractive'].split())} words):")
             print("-" * 30)
             print(summaries['extractive'])
         
         if 'abstractive' in summaries:
-            print(f"\n🧠 Abstractive Summary ({len(summaries['abstractive'].split())} words):")
+            print(f"\n Abstractive Summary ({len(summaries['abstractive'].split())} words):")
             print("-" * 30)
             print(summaries['abstractive'])
         
         # Evaluate if reference is provided
         if reference_summary:
-            print("\n📊 Evaluation Results:")
+            print("\n Evaluation Results:")
             print("=" * 30)
             
             if 'extractive' in summaries:
@@ -500,7 +502,7 @@ def main():
     """
     Main function demonstrating the text summarization system.
     """
-    print("🎯 Text Summarization Project Demo")
+    print(" Text Summarization Project Demo")
     print("=" * 50)
     
     # Example text - AI and technology article
@@ -522,12 +524,12 @@ def main():
     summarizer = TextSummarizer()
     
     # Demonstrate comparison
-    print("\n🎭 Demonstration: Comparing Summarization Methods")
+    print("\n Demonstration: Comparing Summarization Methods")
     summarizer.compare_methods(example_text)
     
     # Interactive example
     print("\n" + "=" * 50)
-    print("🎮 Try it yourself!")
+    print(" Try it yourself!")
     print("Paste your own text or press Enter to skip:")
     
     user_text = input().strip()
@@ -535,13 +537,13 @@ def main():
         print(f"\nProcessing your text ({len(user_text.split())} words)...")
         summaries = summarizer.summarize(user_text, method="both")
         
-        print(f"\n📝 Extractive Summary:")
+        print(f"\n Extractive Summary:")
         print(summaries.get('extractive', 'Not available'))
         
-        print(f"\n🧠 Abstractive Summary:")
+        print(f"\n Abstractive Summary:")
         print(summaries.get('abstractive', 'Not available'))
     
-    print("\n✨ Demo completed! Check out the Streamlit app for a better interface.")
+    print("\n Demo completed! Check out the Streamlit app for a better interface.")
     print("Run: streamlit run streamlit_app.py")
 
 
