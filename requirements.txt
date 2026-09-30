@@ -19,7 +19,7 @@ tokenizers>=0.13.0
 rouge-score>=0.1.2
 
 # Web Interface (Optional)
-streamlit>=1.25.0
+gradio>=4.0.0
 plotly>=5.15.0
 pandas>=2.0.0
 
