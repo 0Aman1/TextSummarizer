@@ -1,3 +1,14 @@
+---
+title: Text Summarizer
+emoji: 📝
+colorFrom: blue
+colorTo: green
+sdk: streamlit
+sdk_version: 1.25.0
+app_file: streamlit_app.py
+pinned: false
+---
+
 # 🎯 AI Text Summarizer
 
 A comprehensive text summarization tool that implements both **extractive** and **abstractive** summarization techniques using advanced NLP methods. Perfect for beginners to intermediate learners looking to understand and implement modern text summarization approaches.
